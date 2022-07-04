@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Painel Mini Curso</title>
+  <script type="text/javascript" src="https://unpkg.com/tabulator-tables@4.9.3/dist/js/tabulator.js"></script>
+  <script type="text/javascript" src="https://cdn.bokeh.org/bokeh/release/bokeh-2.4.2.js"></script>
+  <script type="text/javascript" src="https://cdn.bokeh.org/bokeh/release/bokeh-widgets-2.4.2.min.js"></script>
+  <script type="text/javascript" src="https://cdn.bokeh.org/bokeh/release/bokeh-tables-2.4.2.min.js"></script>
+  <script type="text/javascript" src="https://unpkg.com/@holoviz/panel@0.13.1/dist/panel.min.js"></script>
+  <script type="text/javascript">
+    Bokeh.set_log_level("info");
+  </script>
+
+  <link rel="stylesheet" href="https://pyscript.net/alpha/pyscript.css" />
+  <script defer src="https://pyscript.net/alpha/pyscript.js"></script>
+
+  <style>
+     #mapas {
+      display: flex;
+      padding: 50px;
+     }
+    
+     #mapa_tipo {
+      width:  50%; 
+      height: 50%;
+     }
+
+     #mapa_preco {
+      width:  50%; 
+      height: 50%;
+     }
+
+     #barras {
+      padding: 50px;
+     }
+
+     h1 {
+      font-size: 20px;
+      color: purple;
+      padding: 5px;
+     }
+
+     h1:hover {
+      color: black;
+     }
+
+  </style>
+
+  <py-env>
+    - folium
+    - pandas
+    - panel==0.13.1
+    - bokeh
+  </py-env>
+
+</head>
+<body>
+  <py-script>
+    import warnings
+    import panel as pn
+    import pandas as pd
+
+    from bokeh.plotting import figure 
+    from folium import Map, Marker, Popup, Icon
+
+    from pyodide.http import open_url
+
+    warnings.filterwarnings('ignore')
+
+    df = pd.read_csv(open_url('https://raw.githubusercontent.com/gr-2021/test/main/AB_NYC_2019.csv'))
+    df = df.dropna()
+    df = df[df['availability_365'] > 0]
+    df = df.reset_index(drop=True)
+  </py-script>
+
+  <div id="barras">
+    <h1>Aluguel mais caro por região</h1>
+  </div>
+  <py-script>
+    df_plot = df[['neighbourhood_group', 'price']].groupby('neighbourhood_group').max().reset_index()
+    
+    fig = figure(plot_height=300, x_range=df_plot["neighbourhood_group"])
+    fig.vbar(source=df_plot, x='neighbourhood_group', top='price', width=.8)
+    
+    try:
+      pn.pane.Bokeh(fig).servable(target='barras')
+    except:
+      print('o')
+  </py-script>
+
+  <hr>
+
+  <div id="mapas">
+    <div id="mapa_preco">
+      <h1>Imóveis mais caros por aluguel</h1>
+    </div>
+    <py-script output="mapa_preco">
+      df_plot = df[['latitude', 'longitude', 'neighbourhood_group', 'price']].groupby('neighbourhood_group').max().reset_index()
+      mp = Map(
+          zoom_start=10,
+          control_scale=True,
+          location=[df_plot['latitude'].mean(), 
+                    df_plot['longitude'].mean()]
+      )
+
+      for _, row in df_plot.iterrows():
+          text_popup = f"<b>{row['neighbourhood_group']}</b><br>Price: {row['price']}"
+          
+          Marker([row['latitude'], row['longitude']], popup=Popup(text_popup, max_width=90)).add_to(mp)
+          
+      mp
+    </py-script>
+
+    <div id="mapa_tipo">
+      <h1>Imóveis coloridos por tipo</h1>
+    </div>
+    <py-script output="mapa_tipo">
+      df_plot = df[['latitude', 'longitude', 'neighbourhood_group', 'room_type']]
+
+      df_plot['color'] = df_plot['room_type'].apply( 
+                          lambda x: 'darkgreen' if x == 'Private room'    else 
+                                    'darkred'   if x == 'Entire home/apt' else 
+                                    'purple' )
+
+      df_plot = df_plot.sample(100)
+
+      mp = Map(
+          zoom_start=11,
+          control_scale=True,
+          location=[df_plot['latitude'].mean(), 
+                    df_plot['longitude'].mean()]
+      )
+
+      for _, row in df_plot.iterrows():
+          text_popup = f"<b>{row['neighbourhood_group']}</b><br>Type: {row['room_type']}"
+          
+          Marker([row['latitude'], row['longitude']], 
+                  icon  = Icon(color=row['color']),
+                  popup = Popup(text_popup, max_width=90)).add_to(mp)
+          
+      mp
+    </py-script>
+
+  </div>
+</body>
+</html>
